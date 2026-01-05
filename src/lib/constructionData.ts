@@ -209,54 +209,43 @@ function getProjectYear(yillar: string): number {
   return Math.floor((startYear + endYear) / 2);
 }
 
-// Calculate normalized cost per m² (adjusted to 2024 baseline)
-export function calculateNormalizedCostsPerM2(): Record<string, number> {
-  const baseYear = 2024; // Normalize all to 2024 prices
+// Calculate average cost per m² directly from historical data (no inflation adjustment - data is already at their year's prices)
+export function calculateAverageCostsPerM2(): Record<string, number> {
   const averages: Record<string, number> = {};
   
   costCategories.forEach(({ key }) => {
-    let totalNormalizedCost = 0;
+    let totalCost = 0;
     let totalM2 = 0;
     
     historicalProjects.forEach(project => {
       if (project.maliyetler[key] > 0) {
-        const projectYear = getProjectYear(project.yillar);
-        // Adjust historical cost to 2024 prices
-        const inflationToBase = calculateInflationMultiplier(projectYear, baseYear);
-        const normalizedCost = project.maliyetler[key] * inflationToBase;
-        
-        totalNormalizedCost += normalizedCost;
+        totalCost += project.maliyetler[key];
         totalM2 += project.metrekare;
       }
     });
     
-    averages[key] = totalM2 > 0 ? totalNormalizedCost / totalM2 : 0;
+    averages[key] = totalM2 > 0 ? totalCost / totalM2 : 0;
   });
   
   return averages;
 }
 
-// Calculate normalized cost per apartment (adjusted to 2024 baseline)
-export function calculateNormalizedCostsPerDaire(): Record<string, number> {
-  const baseYear = 2024;
+// Calculate average cost per apartment directly from historical data
+export function calculateAverageCostsPerDaire(): Record<string, number> {
   const averages: Record<string, number> = {};
   
   costCategories.forEach(({ key }) => {
-    let totalNormalizedCost = 0;
+    let totalCost = 0;
     let totalDaire = 0;
     
     historicalProjects.forEach(project => {
       if (project.maliyetler[key] > 0) {
-        const projectYear = getProjectYear(project.yillar);
-        const inflationToBase = calculateInflationMultiplier(projectYear, baseYear);
-        const normalizedCost = project.maliyetler[key] * inflationToBase;
-        
-        totalNormalizedCost += normalizedCost;
+        totalCost += project.maliyetler[key];
         totalDaire += project.daireAdet;
       }
     });
     
-    averages[key] = totalDaire > 0 ? totalNormalizedCost / totalDaire : 0;
+    averages[key] = totalDaire > 0 ? totalCost / totalDaire : 0;
   });
   
   return averages;
@@ -277,56 +266,55 @@ export interface TahminGirdisi {
   bitisYili: number;
 }
 
-// Size multipliers by apartment type
+// Size multipliers by apartment type (relative to 2+1)
 export const daireBuyuklukKatsayisi: Record<DaireTipi, number> = {
-  "1+1": 0.6,
+  "1+1": 0.7,
   "2+1": 1.0,
-  "3+1": 1.4,
-  "4+1": 1.8,
+  "3+1": 1.3,
+  "4+1": 1.6,
 };
 
+// Get average project year from historical data (weighted by project count)
+function getHistoricalBaseYear(): number {
+  let totalYear = 0;
+  historicalProjects.forEach(project => {
+    const parts = project.yillar.split("-");
+    const midYear = (parseInt(parts[0]) + parseInt(parts[1])) / 2;
+    totalYear += midYear;
+  });
+  return Math.round(totalYear / historicalProjects.length);
+}
+
 export function tahminHesapla(girdi: TahminGirdisi): Record<string, number> {
-  const baseYear = 2024; // Our normalized baseline
-  const m2Ortalama = calculateNormalizedCostsPerM2();
-  const daireOrtalama = calculateNormalizedCostsPerDaire();
+  // Historical data's average year (approximately 2024)
+  const historicalBaseYear = getHistoricalBaseYear();
   
-  // Calculate weighted apartment count
+  // Target year for the new project
+  const hedefYil = Math.floor((girdi.baslangicYili + girdi.bitisYili) / 2);
+  
+  // Calculate inflation from historical base to target year
+  const enflasyonKatsayisi = calculateInflationMultiplier(historicalBaseYear, hedefYil);
+  
+  const daireOrtalama = calculateAverageCostsPerDaire();
+  
+  // Calculate weighted apartment count based on type
   const agirlikliDaireAdet = girdi.daireler.reduce((acc, d) => {
     return acc + d.adet * daireBuyuklukKatsayisi[d.tip];
   }, 0);
   
-  const toplamDaire = girdi.daireler.reduce((acc, d) => acc + d.adet, 0);
-  
-  // Calculate target year (middle of project)
-  const hedefYil = Math.floor((girdi.baslangicYili + girdi.bitisYili) / 2);
-  
-  // Calculate inflation from base year (2024) to target year
-  const enflasyonKatsayisi = calculateInflationMultiplier(baseYear, hedefYil);
-  
   const tahminler: Record<string, number> = {};
   
   costCategories.forEach(({ key }) => {
-    // Use a weighted average between m² based and apartment based costs
-    const m2Maliyet = m2Ortalama[key] * girdi.oturumAlani;
-    const daireMaliyet = daireOrtalama[key] * agirlikliDaireAdet;
+    // Use only apartment-based calculation (more reliable from data)
+    const tabanMaliyet = daireOrtalama[key] * agirlikliDaireAdet;
     
-    // Categories that depend more on apartment count
-    const daireAgirlikliKategoriler = ["mobilya", "pakpen", "sucu", "elektrikci", "asansor", "fayans", "dusakabin", "kapi"];
-    
-    let tabanMaliyet: number;
-    if (daireAgirlikliKategoriler.includes(key)) {
-      tabanMaliyet = daireMaliyet * 0.7 + m2Maliyet * 0.3;
-    } else {
-      tabanMaliyet = m2Maliyet * 0.6 + daireMaliyet * 0.4;
-    }
-    
-    // Apply inflation from 2024 to target year
+    // Apply inflation from historical base to target year
     tahminler[key] = Math.round(tabanMaliyet * enflasyonKatsayisi);
   });
   
-  // Add shop cost if applicable (base cost in 2024 prices)
+  // Add shop cost if applicable
   if (girdi.dukkanSayisi > 0) {
-    const dukkanBirimMaliyet = 250000; // 2024 fiyatıyla dükkan maliyeti
+    const dukkanBirimMaliyet = 150000; // Approximate cost per shop
     const dukkanEkMaliyet = girdi.dukkanSayisi * dukkanBirimMaliyet * enflasyonKatsayisi;
     tahminler.digerGiderler = (tahminler.digerGiderler || 0) + Math.round(dukkanEkMaliyet);
   }
@@ -336,11 +324,12 @@ export function tahminHesapla(girdi: TahminGirdisi): Record<string, number> {
 
 // Get inflation info for display
 export function getInflationInfo(baslangicYili: number, bitisYili: number): {
+  baseYear: number;
   hedefYil: number;
   kumulatifEnflasyon: number;
   yillikOrtalama: number;
 } {
-  const baseYear = 2024;
+  const baseYear = getHistoricalBaseYear();
   const hedefYil = Math.floor((baslangicYili + bitisYili) / 2);
   const kumulatifEnflasyon = calculateInflationMultiplier(baseYear, hedefYil);
   const yilFarki = hedefYil - baseYear;
@@ -348,8 +337,9 @@ export function getInflationInfo(baslangicYili: number, bitisYili: number): {
     ? (Math.pow(kumulatifEnflasyon, 1 / yilFarki) - 1) * 100 
     : 0;
   
-  return { hedefYil, kumulatifEnflasyon, yillikOrtalama };
+  return { baseYear, hedefYil, kumulatifEnflasyon, yillikOrtalama };
 }
+
 
 export function formatCurrency(amount: number): string {
   return new Intl.NumberFormat('tr-TR', {
