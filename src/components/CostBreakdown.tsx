@@ -105,7 +105,7 @@ export function CostBreakdown({ tahminler, girdi }: CostBreakdownProps) {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="text-center p-3 bg-background rounded-lg">
               <div className="text-xs text-muted-foreground">Baz Yıl</div>
-              <div className="text-lg font-semibold">2024</div>
+              <div className="text-lg font-semibold">{enflasyonBilgisi.baseYear}</div>
             </div>
             <div className="text-center p-3 bg-background rounded-lg">
               <div className="text-xs text-muted-foreground">Hedef Yıl</div>
@@ -127,7 +127,7 @@ export function CostBreakdown({ tahminler, girdi }: CostBreakdownProps) {
           <div className="mt-3 text-xs text-muted-foreground">
             <span className="font-medium">Kullanılan TÜFE oranları:</span>{" "}
             {Object.entries(turkiyeEnflasyonOranlari)
-              .filter(([year]) => parseInt(year) >= 2024 && parseInt(year) <= enflasyonBilgisi.hedefYil)
+              .filter(([year]) => parseInt(year) > enflasyonBilgisi.baseYear && parseInt(year) <= enflasyonBilgisi.hedefYil)
               .map(([year, rate]) => `${year}: %${rate}`)
               .join(" → ")}
           </div>
