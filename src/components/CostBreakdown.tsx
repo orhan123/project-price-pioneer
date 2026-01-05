@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { costCategories, formatCurrency, TahminGirdisi } from "@/lib/constructionData";
+import { costCategories, formatCurrency, TahminGirdisi, getInflationInfo, turkiyeEnflasyonOranlari } from "@/lib/constructionData";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { TrendingUp, PieChartIcon, BarChart3, List } from "lucide-react";
+import { TrendingUp, PieChartIcon, BarChart3, List, Info } from "lucide-react";
+import { Tooltip as UITooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface CostBreakdownProps {
   tahminler: Record<string, number>;
@@ -27,6 +28,9 @@ export function CostBreakdown({ tahminler, girdi }: CostBreakdownProps) {
   const toplamDaire = girdi.daireler.reduce((acc, d) => acc + d.adet, 0);
   const birimMaliyet = toplamMaliyet / girdi.oturumAlani;
   const daireBirimMaliyet = toplamMaliyet / toplamDaire;
+
+  // Get inflation info
+  const enflasyonBilgisi = getInflationInfo(girdi.baslangicYili, girdi.bitisYili);
 
   // Prepare data for charts
   const chartData = costCategories
@@ -80,6 +84,55 @@ export function CostBreakdown({ tahminler, girdi }: CostBreakdownProps) {
           </CardContent>
         </Card>
       </div>
+
+      {/* Inflation Info Card */}
+      <Card className="border-secondary/50 bg-secondary/5">
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-2">
+            <TrendingUp className="h-5 w-5 text-secondary" />
+            <CardTitle className="text-lg">Enflasyon Hesabı</CardTitle>
+            <UITooltip>
+              <TooltipTrigger>
+                <Info className="h-4 w-4 text-muted-foreground" />
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs">
+                <p>Maliyet tahmini 2024 yılı baz alınarak hesaplanmış, hedef yıla Türkiye TÜFE oranları ile projeksiyon yapılmıştır.</p>
+              </TooltipContent>
+            </UITooltip>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="text-center p-3 bg-background rounded-lg">
+              <div className="text-xs text-muted-foreground">Baz Yıl</div>
+              <div className="text-lg font-semibold">2024</div>
+            </div>
+            <div className="text-center p-3 bg-background rounded-lg">
+              <div className="text-xs text-muted-foreground">Hedef Yıl</div>
+              <div className="text-lg font-semibold">{enflasyonBilgisi.hedefYil}</div>
+            </div>
+            <div className="text-center p-3 bg-background rounded-lg">
+              <div className="text-xs text-muted-foreground">Kümülatif Enflasyon</div>
+              <div className="text-lg font-semibold text-secondary">
+                x{enflasyonBilgisi.kumulatifEnflasyon.toFixed(2)}
+              </div>
+            </div>
+            <div className="text-center p-3 bg-background rounded-lg">
+              <div className="text-xs text-muted-foreground">Yıllık Ort. Enflasyon</div>
+              <div className="text-lg font-semibold">
+                %{enflasyonBilgisi.yillikOrtalama.toFixed(1)}
+              </div>
+            </div>
+          </div>
+          <div className="mt-3 text-xs text-muted-foreground">
+            <span className="font-medium">Kullanılan TÜFE oranları:</span>{" "}
+            {Object.entries(turkiyeEnflasyonOranlari)
+              .filter(([year]) => parseInt(year) >= 2024 && parseInt(year) <= enflasyonBilgisi.hedefYil)
+              .map(([year, rate]) => `${year}: %${rate}`)
+              .join(" → ")}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Project Summary */}
       <Card>
